@@ -21,6 +21,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"regexp"
@@ -368,6 +369,18 @@ func (p *AMDGPUPlugin) Allocate(ctx context.Context, r *pluginapi.AllocateReques
 		dev.ContainerPath = "/dev/kfd"
 		dev.Permissions = "rw"
 		car.Devices = append(car.Devices, dev)
+
+		cmd := exec.Command("bash", "-c", "getent group render | cut -d':' -f 3")
+		out, err := cmd.Output()
+		if err != nil {
+			glog.Errorf("Fetching render group ID failed: %s", err)
+		} else {
+			renderGroupId := string(out)
+			car.Envs = map[string]string{
+				"RENDER_GROUP_ID": renderGroupId,
+			}
+			glog.Infof("RENDER_GROUP_ID set to: %s", renderGroupId)
+		}
 
 		for _, id := range req.DevicesIDs {
 			glog.Infof("Allocating device ID: %s", id)
