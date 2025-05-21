@@ -351,6 +351,21 @@ func (p *AMDGPUPlugin) GetPreferredAllocation(ctx context.Context, req *pluginap
 	return response, nil
 }
 
+func isNumeric(s string) bool {
+	_, errInt := strconv.Atoi(s)
+	return errInt == nil
+}
+
+func executeShellCommand(shell, c, message string) (string, error) {
+	cmd := exec.Command(shell, "-c", c)
+	out, err := cmd.Output()
+	if err != nil {
+		glog.Errorf("%s: %s", message, err)
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // Allocate is called during container creation so that the Device
 // Plugin can run device specific operations and instruct Kubelet
 // of the steps to make the Device available in the container
@@ -370,16 +385,17 @@ func (p *AMDGPUPlugin) Allocate(ctx context.Context, r *pluginapi.AllocateReques
 		dev.Permissions = "rw"
 		car.Devices = append(car.Devices, dev)
 
-		cmd := exec.Command("bash", "-c", "getent group render | cut -d':' -f 3")
-		out, err := cmd.Output()
-		if err != nil {
-			glog.Errorf("Fetching render group ID failed: %s", err)
-		} else {
-			renderGroupId := string(out)
-			car.Envs = map[string]string{
-				"RENDER_GROUP_ID": renderGroupId,
+		renderGroupId, err := executeShellCommand("sh", "ls -l /dev/dri | grep renderD | awk '{print $4}'", "Fetching render group ID failed")
+		if err == nil {
+			if !isNumeric(renderGroupId) {
+				renderGroupId, err = executeShellCommand("sh", "getent group render | cut -d':' -f 3", "Converting group name to group ID failed")
 			}
-			glog.Infof("RENDER_GROUP_ID set to: %s", renderGroupId)
+			if err == nil {
+				car.Envs = map[string]string{
+					"RENDER_GROUP_ID": renderGroupId,
+				}
+				glog.Infof("RENDER_GROUP_ID set to: %s", renderGroupId)
+			}
 		}
 
 		for _, id := range req.DevicesIDs {
