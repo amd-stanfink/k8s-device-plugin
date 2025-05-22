@@ -57,7 +57,7 @@ spec:
         imagePullPolicy: Always
         workingDir: /root
         command: ["./k8s-node-labeller"]
-        args: ["-vram", "-cu-count", "-simd-count", "-device-id", "-family", "-product-name", "render-group-id"]
+        args: ["-vram", "-cu-count", "-simd-count", "-device-id", "-family", "-product-name", "-render-group-id"]
         env:
           - name: DS_NODE_NAME
             valueFrom:
