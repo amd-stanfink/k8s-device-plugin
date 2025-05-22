@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -111,6 +112,21 @@ var reSizeInBytes = regexp.MustCompile(`size_in_bytes\s(\d+)`)
 var reSimdCount = regexp.MustCompile(`simd_count\s(\d+)`)
 var reSimdPerCu = regexp.MustCompile(`simd_per_cu\s(\d+)`)
 var reDrmRenderMinor = regexp.MustCompile(`drm_render_minor\s(\d+)`)
+
+func isNumeric(s string) bool {
+	_, errInt := strconv.Atoi(s)
+	return errInt == nil
+}
+
+func executeShellCommand(shell, c, message string) (string, error) {
+	cmd := exec.Command(shell, "-c", c)
+	out, err := cmd.Output()
+	if err != nil {
+		log.Error(err, message)
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
 
 var labelGenerators = map[string]func(map[string]map[string]interface{}) map[string]string{
 	"firmware": func(gpus map[string]map[string]interface{}) map[string]string {
@@ -367,6 +383,21 @@ var labelGenerators = map[string]func(map[string]map[string]interface{}) map[str
 		val := strconv.FormatBool(amdgpu.IsMemoryPartitionSupported())
 		pfx := createLabelPrefix("memory-partitioning-supported", false)
 		return map[string]string{pfx: val}
+	},
+	"render-group-id": func(gpus map[string]map[string]interface{}) map[string]string {
+		renderGroupId, err := executeShellCommand("sh", "ls -l /dev/dri | grep renderD | awk '{print $4}'", "Fetching render group ID failed")
+		if err == nil {
+			if !isNumeric(renderGroupId) {
+				renderGroupId, err = executeShellCommand("sh", "getent group render | cut -d':' -f 3", "Converting group name to group ID failed")
+				if err == nil {
+					log.Info("RENDER_GROUP_ID set to: %s", renderGroupId)
+					return map[string]string{"render-group-id": renderGroupId}
+				}
+				return map[string]string{"render-group-id": ""}
+			}
+			return map[string]string{"render-group-id": renderGroupId}
+		}
+		return map[string]string{"render-group-id": ""}
 	},
 }
 
